@@ -1,0 +1,12 @@
+# Build output and local user data
+Portable/*.exe
+Portable/*.pdb
+*.zip
+SHA256SUMS.txt
+*.user
+*.suo
+.vs/
+bin/
+obj/
+
+
