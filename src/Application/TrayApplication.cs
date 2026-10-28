@@ -20,6 +20,7 @@ namespace ClipCourier.App
         private readonly System.Windows.Forms.Timer clipboardTimer;
         private uint clipboardSequence;
         private DateTime captureStarted;
+        private DateTime releaseWaitStarted;
         private bool capturing;
         private bool hotkeyRegistered;
 
@@ -41,8 +42,8 @@ namespace ClipCourier.App
             tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "ClipCourier", ContextMenuStrip = menu, Visible = true };
             tray.DoubleClick += delegate { OpenSettings(); };
 
-            releaseTimer = new System.Windows.Forms.Timer { Interval = 220 };
-            releaseTimer.Tick += delegate { releaseTimer.Stop(); SendCopyAndWait(); };
+            releaseTimer = new System.Windows.Forms.Timer { Interval = 30 };
+            releaseTimer.Tick += WaitForHotkeyRelease;
             clipboardTimer = new System.Windows.Forms.Timer { Interval = 45 };
             clipboardTimer.Tick += PollClipboard;
 
@@ -86,8 +87,27 @@ namespace ClipCourier.App
         {
             if (capturing) return;
             capturing = true;
-            // Wait for the shortcut keys to be released before sending Ctrl+C.
+            releaseWaitStarted = DateTime.UtcNow;
+            // RegisterHotKey fires on key-down. Wait until the chord is fully released,
+            // or the synthetic Ctrl+C can still include the user's Ctrl/Alt modifiers.
             releaseTimer.Start();
+        }
+
+        private void WaitForHotkeyRelease(object sender, EventArgs e)
+        {
+            bool shortcutKeyDown = Native.IsKeyDown(config.HotkeyKey);
+            bool modifierDown = Native.IsKeyDown(0x11) || Native.IsKeyDown(0x12) || Native.IsKeyDown(0x10);
+            if (shortcutKeyDown || modifierDown)
+            {
+                if ((DateTime.UtcNow - releaseWaitStarted).TotalMilliseconds <= 2000) return;
+                releaseTimer.Stop();
+                capturing = false;
+                tray.ShowBalloonTip(4000, "Shortcut still held", "Release the shortcut keys, then try again.", ToolTipIcon.Warning);
+                return;
+            }
+
+            releaseTimer.Stop();
+            SendCopyAndWait();
         }
 
         // Arm clipboard polling only after sending Ctrl+C, using the earlier sequence as the baseline.
