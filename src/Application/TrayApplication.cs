@@ -46,7 +46,16 @@ namespace ClipCourier.App
             clipboardTimer = new System.Windows.Forms.Timer { Interval = 45 };
             clipboardTimer.Tick += PollClipboard;
 
-            Shown += delegate { Hide(); ApplyHotkey(); if (config.Destinations.Count == 0) OpenSettings(); };
+            Shown += delegate
+            {
+                Hide();
+                ApplyHotkey();
+                // Repair the sign-in entry when the app is moved or a previous registry
+                // update did not stick. This also makes the saved setting authoritative.
+                try { StartupManager.SetEnabled(config.LaunchAtLogin); }
+                catch (Exception ex) { AppLog.Write(ex); }
+                if (config.Destinations.Count == 0) OpenSettings();
+            };
         }
 
         protected override void WndProc(ref Message m)
@@ -176,10 +185,12 @@ namespace ClipCourier.App
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            bool startupUpdateAttempted = config.LaunchAtLogin != previous.LaunchAtLogin;
+            // Reconcile even when the checkbox is unchanged: users can move the portable
+            // executable or the Run value can be removed by Windows or another utility.
+            bool startupUpdateAttempted = true;
             try
             {
-                if (startupUpdateAttempted) StartupManager.SetEnabled(config.LaunchAtLogin);
+                StartupManager.SetEnabled(config.LaunchAtLogin);
                 ConfigStore.Save(config);
             }
             catch (Exception ex)
